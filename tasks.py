@@ -192,7 +192,7 @@ def open_page() -> browser.Page:
 def reject_cookies_popup_if_available(page: browser.Page) -> None:
     """ Reject the cookies popup if it is displayed """
     try:
-        page.click("button#onetrust-reject-all-handler", timeout=5000)
+        page.click("button#onetrust-reject-all-handler", timeout=30000)
     except Exception:
         logger.info("Could not find the cookies popup.")
         pass
