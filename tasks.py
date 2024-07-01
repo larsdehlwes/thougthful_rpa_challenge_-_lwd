@@ -20,12 +20,7 @@ from datetime import datetime, timedelta, date
 import re
 from bs4 import BeautifulSoup
 
-# import uniform from random
 from random import uniform, randint
-
-from concurrent.futures import ThreadPoolExecutor
-from urllib.request import urlretrieve
-from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 
 import asyncio
 from aiofiles import open as aio_open
@@ -64,11 +59,12 @@ def thoughtful_automation_challenge():
     logger.info("Input processing finished!")
     ### END INPUT PROCESSING ###
 
-    output_payload = asyncio.run(async_process(today, query, category, cutoff_date, months))
+    output_payload = asyncio.run(async_browsing(today, query, category, cutoff_date, months))
     workitems.outputs.create(payload=output_payload)
 
 
-async def async_process(today, query, category, cutoff_date: date, months: int) -> dict:
+async def async_browsing(today, query, category, cutoff_date: date, months: int) -> dict:
+    """ Asynchronous process to extract and process the search results """
     output_payload = {}
 
     async with async_playwright() as p:
@@ -78,9 +74,6 @@ async def async_process(today, query, category, cutoff_date: date, months: int) 
             logger.info("Starting page load, search and sorting...")
             page = await browser.new_page()
             await open_page(page)
-            #reject_cookies_popup_if_available(page)
-            random_wait = randint(300, 500)
-            await page.wait_for_timeout(random_wait)
 
             cookie_task = asyncio.create_task(reject_cookies_popup_if_available(page))
             search_task = asyncio.create_task(search(page, query))
@@ -130,9 +123,10 @@ async def async_process(today, query, category, cutoff_date: date, months: int) 
                     while True:
                         soup = await parse_search_results(page)
                         limit_reached = await fetch_all_new_image_links(page, soup, posts, imgs_basenames, imgs_basenames_done, cutoff_date, task_group)
-                        print(f"diff: {imgs_basenames.difference(imgs_basenames_done)}")
+                        logger.info(f"basename difference set: {imgs_basenames.difference(imgs_basenames_done)}")
                         if imgs_basenames == imgs_basenames_done:
                             break
+                        logger.info("Randomly wait and scroll...")
                         random_scroll = randint(1, window_inner_height)
                         random_wait = randint(500, 2000)
                         await mouse.wheel(0, scroll_dir*random_scroll)
@@ -142,10 +136,13 @@ async def async_process(today, query, category, cutoff_date: date, months: int) 
                             scroll_dir *= -1
 
                     if limit_reached:
+                        logger.info("Reached last relevant page.")
                         break
                     # Try to click the "Next stories" button, if it does not exist, break the loop
                     try:
-                        await page.click("//button[contains(@aria-label, 'Next stories')]")
+                        next_stories_locator = page.locator("//button[contains(@aria-label, 'Next stories')]")
+                        logger.info("Go to the next page...")
+                        await click_after_visible_and_random_wait(page, next_stories_locator)
                     except:
                         break
                 logger.info("Search result extraction finished!")
@@ -154,6 +151,7 @@ async def async_process(today, query, category, cutoff_date: date, months: int) 
             ### BEGIN DATA PROCESSING ###
             logger.info("Starting data processing...")
             words = query.split()
+
             # quick and easy, regular expression approach matching full words
             # more appropriate for this task would be a proper tokenization and stemming approach using spacy or nltk
 
@@ -162,6 +160,7 @@ async def async_process(today, query, category, cutoff_date: date, months: int) 
             posts_crop = [{k: v for k, v in post.items() if k not in set_of_keys_to_drop} for post in posts]
             posts_unique = [dict(t) for t in {tuple(d.items()) for d in posts_crop}]
             sorted_posts = sorted(posts_unique, key=lambda x: x['date'], reverse=True)
+
             for row in sorted_posts:
                 # Calculate the count of the words of the query occuring in the title and image description
                 count = 0
@@ -173,6 +172,7 @@ async def async_process(today, query, category, cutoff_date: date, months: int) 
                 row['count'] = count
                 # Check whether a price is mentioned in the title
                 row['price'] = validate_price(test_string)
+
             logger.info("Data processing finished!")
             ### END DATA PROCESSING ###
 
@@ -201,6 +201,17 @@ async def async_process(today, query, category, cutoff_date: date, months: int) 
             return output_payload
 
 
+async def click_after_visible_and_random_wait(page: Page, locator, timeout: int = 30000) -> None:
+    """ Click an element after it is visible and awaited for a random time """
+    random_wait = randint(300, 500)
+    await page.wait_for_timeout(random_wait)
+    await locator.scroll_into_view_if_needed()
+    await locator.is_enabled()
+    random_wait = randint(300, 500)
+    await page.wait_for_timeout(random_wait)
+    await locator.click()
+
+
 async def open_page(page: Page) -> None:
     """ Open the Reuters website and wait for it to load """
     await page.goto("https://www.reuters.com", timeout=60000)
@@ -209,7 +220,8 @@ async def open_page(page: Page) -> None:
 async def reject_cookies_popup_if_available(page: Page) -> None:
     """ Reject the cookies popup if it is displayed """
     try:
-        await page.click("button#onetrust-reject-all-handler", timeout=30000)
+        locator = page.locator("button#onetrust-reject-all-handler")
+        await click_after_visible_and_random_wait(page, locator)
     except Exception:
         logger.info("Could not find the cookies popup.")
         pass
@@ -217,29 +229,33 @@ async def reject_cookies_popup_if_available(page: Page) -> None:
 
 async def search(page: Page, query: str) -> None:
     """ Perform a search on the Reuters website """
-    await page.click("//button[@aria-label='Open search bar']")
+    open_search_locator = page.locator("//button[@aria-label='Open search bar']")
+    await click_after_visible_and_random_wait(page, open_search_locator)
+    
+    query_locator = page.get_by_test_id('FormField:input')
     random_wait = randint(300, 500)
     await page.wait_for_timeout(random_wait)
-    await page.get_by_test_id('FormField:input').fill(query)
-    random_wait = randint(300, 500)
-    await page.wait_for_timeout(random_wait)
-    await page.click("//button[@aria-label='Search']")
+    await query_locator.fill(query)
+
+    search_locator = page.locator("//button[@aria-label='Search']")
+    await click_after_visible_and_random_wait(page, search_locator)
 
 
 async def select_category(page: Page, category: str) -> None:
     """ Select a category on the Reuters website """
-    await page.click("button#sectionfilter")
-    random_wait = randint(300, 500)
-    await page.wait_for_timeout(random_wait)
-    await page.click(f"//li[@data-key='{category}']")
+    category_locator = page.locator("button#sectionfilter")
+    await click_after_visible_and_random_wait(page, category_locator)
+    chosen_locator = page.locator(f"//li[@data-key='{category}']")
+    await click_after_visible_and_random_wait(page, chosen_locator)
 
 
 async def sortby(page: Page, sortby: Literal['Newest', 'Oldest', 'Relevance'] = 'Newest') -> None:
     """ Sort the search results on the Reuters website (Newest, Oldest, Relevance) """
-    await page.click("button#sortby")
-    random_wait = randint(300, 500)
-    await page.wait_for_timeout(random_wait)
-    await page.click(f"//li[@data-key='{sortby}']")
+    sortby_locator = page.locator("button#sortby")
+    await click_after_visible_and_random_wait(page, sortby_locator)
+
+    order_locator = page.locator(f"//li[@data-key='{sortby}']")
+    await click_after_visible_and_random_wait(page, order_locator)
 
 
 def validate_price(test_string: str) -> bool:
@@ -272,18 +288,21 @@ async def parse_search_results(page: Page) -> BeautifulSoup:
     return soup
 
 
-def lazy_loaded_images_on_page(soup: BeautifulSoup) -> bool:
-    """ Check if all jpg images on the page have been loaded """
-    for li in soup.find_all('li'):
-        img = li.find('img')
-        img_src = img.get('src')
-        filetype = img_src.split('.')[-1]
-        if filetype == 'jpg' and img.get('srcset') is None:
-            return False
-    return True
-
-
 async def fetch_all_new_image_links(page: Page, soup: BeautifulSoup, posts: list, basenames: set, done_basenames: set, cutoff_date: date, task_group) -> bool:
+    """ Fetch all new image links from the search results 
+
+    Args:
+        page, Page: The current page object.
+        soup, BeautifulSoup: The BeautifulSoup object containing the search results.
+        posts, list: The list of posts to be updated.
+        basenames, set: The set of basenames to be updated.
+        done_basenames, set: The set of done basenames to be updated.
+        cutoff_date, date: The cutoff date to stop the loop.
+        task_group, TaskGroup: The TaskGroup object to manage the asynchronous tasks.
+
+    Returns:
+        bool: True if the cutoff date is reached, False otherwise
+    """
     for li in soup.find_all('li'):
         row = extract_information_from_list_item(li)
         
@@ -356,17 +375,17 @@ def write_rows_to_excel(rows: dict, filepath: str = "output/reuters_results.xlsx
     excel.save_workbook()
 
 async def response_handler(*args, **kw):
+    """ Handle the response of the page in order to download the requested images """
     try:
         response = args[0]
         url = response.url
-        #if re.findall(r'https://reuters.com/resizer/\S+\.(png|jpg)\?\S+', url, re.IGNORECASE):
         url_match = re.match(r"https?://www\.reuters\.com/resizer/v\d/(\S+)\.(jpg|png|gif)\?auth=([a-f0-9]+)&width=(\d+)&quality=(\d+)", url)
         basename, ext, auth, width, quality = url_match.groups()
         if url_match and int(width) >= 400:
-            print(response.request)
             groups = url_match.groups()
             logger.debug("response_handler:%s", url)
             logger.debug("groups:%s", groups)
+            logger.info(f"Image {basename}.{ext} fetched successfully.")
             img_name = f"output/{groups[0]}.{groups[1]}"
             # use aiofiles instead
             async with aio_open(img_name, 'wb') as f:
