@@ -68,7 +68,7 @@ async def async_browsing(today, query, category, cutoff_date: date, months: int)
     output_payload = {}
 
     async with async_playwright() as p:
-        browser = await p.firefox.launch(headless=False)
+        browser = await p.firefox.launch(headless=True)
         try:
             ### BEGIN PAGE LOAD, SEARCH AND SORTING ###
             logger.info("Starting page load, search and sorting...")
