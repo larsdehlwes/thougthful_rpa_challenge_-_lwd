@@ -84,11 +84,7 @@ async def async_browsing(today, query, category, cutoff_date: date, months: int)
                 return_when=asyncio.FIRST_COMPLETED
             )
 
-            random_wait = randint(300, 500)
-            await page.wait_for_timeout(random_wait)
             await select_category(page, category)
-            random_wait = randint(300, 500)
-            await page.wait_for_timeout(random_wait)
             await sortby(page, 'Newest')
             
             logger.info("Page load, search and sorting finished!")
@@ -108,45 +104,45 @@ async def async_browsing(today, query, category, cutoff_date: date, months: int)
             imgs_basenames = set()
             posts = []
             
-            async with asyncio.TaskGroup() as task_group:
+            list_of_tasks = []
     
-                while True:
-                    pagenum += 1
+            while True:
+                pagenum += 1
         
-                    # Parse the search results using BeautifulSoup
-                    await page.wait_for_load_state()
-                    height_to_be_scrolled = await page.evaluate('document.body.scrollHeight')
-                    window_inner_height = await page.evaluate('window.innerHeight')
-                    mouse = page.mouse
+                # Parse the search results using BeautifulSoup
+                await page.wait_for_load_state()
+                height_to_be_scrolled = await page.evaluate('document.body.scrollHeight')
+                window_inner_height = await page.evaluate('window.innerHeight')
+                mouse = page.mouse
     
-                    scroll_dir = 1
-                    while True:
-                        soup = await parse_search_results(page)
-                        limit_reached = await fetch_all_new_image_links(page, soup, posts, imgs_basenames, imgs_basenames_done, cutoff_date, task_group)
-                        logger.info(f"basename difference set: {imgs_basenames.difference(imgs_basenames_done)}")
-                        if imgs_basenames == imgs_basenames_done:
-                            break
-                        logger.info("Randomly wait and scroll...")
-                        random_scroll = randint(1, window_inner_height)
-                        random_wait = randint(500, 2000)
-                        await mouse.wheel(0, scroll_dir*random_scroll)
-                        await page.wait_for_timeout(random_wait)
-                        scroll_y = await page.evaluate('window.scrollY')
-                        if scroll_y + window_inner_height >= height_to_be_scrolled or scroll_y == 0:
-                            scroll_dir *= -1
+                scroll_dir = 1
+                while True:
+                    soup = await parse_search_results(page)
+                    limit_reached = await fetch_all_new_image_links(page, soup, posts, imgs_basenames, imgs_basenames_done, cutoff_date, list_of_tasks)
+                    logger.info(f"basename difference set: {imgs_basenames.difference(imgs_basenames_done)}")
+                    if imgs_basenames == imgs_basenames_done:
+                        break
+                    logger.info("Randomly wait and scroll...")
+                    random_scroll = randint(1, window_inner_height)
+                    random_wait = randint(500, 2000)
+                    await mouse.wheel(0, scroll_dir*random_scroll)
+                    await page.wait_for_timeout(random_wait)
+                    scroll_y = await page.evaluate('window.scrollY')
+                    if scroll_y + window_inner_height >= height_to_be_scrolled or scroll_y == 0:
+                        scroll_dir *= -1
 
-                    if limit_reached:
-                        logger.info("Reached last relevant page.")
-                        break
-                    # Try to click the "Next stories" button, if it does not exist, break the loop
-                    try:
-                        next_stories_locator = page.locator("//button[contains(@aria-label, 'Next stories')]")
-                        logger.info("Go to the next page...")
-                        await click_after_visible_and_random_wait(page, next_stories_locator)
-                    except:
-                        break
-                logger.info("Search result extraction finished!")
-                ### END SEARCH RESULT EXTRACTION ###
+                if limit_reached:
+                    logger.info("Reached last relevant page.")
+                    break
+                # Try to click the "Next stories" button, if it does not exist, break the loop
+                try:
+                    next_stories_locator = page.locator("//button[contains(@aria-label, 'Next stories')]")
+                    logger.info("Go to the next page...")
+                    await click_after_visible_and_random_wait(page, next_stories_locator)
+                except:
+                    break
+            logger.info("Search result extraction finished!")
+            ### END SEARCH RESULT EXTRACTION ###
 
             ### BEGIN DATA PROCESSING ###
             logger.info("Starting data processing...")
@@ -190,6 +186,11 @@ async def async_browsing(today, query, category, cutoff_date: date, months: int)
             output_payload['results_found'] = len(sorted_posts)
             logger.info("Output writing finished!")
             ### END OUTPUT WRITING ###
+            
+            done, pending = await asyncio.wait(
+                list_of_tasks,
+                return_when=asyncio.ALL_COMPLETED
+            )
 
         except Exception as e:
             logger.error(f"An error occurred: {e}")
@@ -201,7 +202,7 @@ async def async_browsing(today, query, category, cutoff_date: date, months: int)
             return output_payload
 
 
-async def click_after_visible_and_random_wait(page: Page, locator, timeout: int = 30000) -> None:
+async def click_after_visible_and_random_wait(page: Page, locator, timeout: int = 60000) -> None:
     """ Click an element after it is visible and awaited for a random time """
     random_wait = randint(300, 500)
     await page.wait_for_timeout(random_wait)
@@ -288,7 +289,7 @@ async def parse_search_results(page: Page) -> BeautifulSoup:
     return soup
 
 
-async def fetch_all_new_image_links(page: Page, soup: BeautifulSoup, posts: list, basenames: set, done_basenames: set, cutoff_date: date, task_group) -> bool:
+async def fetch_all_new_image_links(page: Page, soup: BeautifulSoup, posts: list, basenames: set, done_basenames: set, cutoff_date: date, list_of_tasks: list) -> bool:
     """ Fetch all new image links from the search results 
 
     Args:
@@ -298,7 +299,7 @@ async def fetch_all_new_image_links(page: Page, soup: BeautifulSoup, posts: list
         basenames, set: The set of basenames to be updated.
         done_basenames, set: The set of done basenames to be updated.
         cutoff_date, date: The cutoff date to stop the loop.
-        task_group, TaskGroup: The TaskGroup object to manage the asynchronous tasks.
+        list_of_tasks, list: The list of tasks to be updated.
 
     Returns:
         bool: True if the cutoff date is reached, False otherwise
@@ -314,7 +315,8 @@ async def fetch_all_new_image_links(page: Page, soup: BeautifulSoup, posts: list
         basenames.add(row.get('img_basename'))
         if row.get('img_basename') not in done_basenames and row.get("img_resized_link") is not None:
             done_basenames.add(row.get('img_basename'))
-            task_group.create_task(fetch_resized_image(page, row.get("img_resized_link")))
+            task = asyncio.create_task(fetch_resized_image(page, row.get("img_resized_link")))
+            list_of_tasks.append(task)
 
     return False
 
