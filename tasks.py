@@ -118,7 +118,9 @@ async def async_browsing(today, query, category, cutoff_date: date, months: int)
                 mouse = page.mouse
     
                 scroll_dir = 1
-                while True:
+                
+                num_scrolls = 0
+                while num_scrolls < 20:
                     soup = await parse_search_results(page)
                     limit_reached = await fetch_all_new_image_links(page, soup, posts, imgs_basenames, imgs_basenames_done, cutoff_date, list_of_tasks)
                     logger.info(f"basename difference set: {imgs_basenames.difference(imgs_basenames_done)}")
@@ -129,6 +131,7 @@ async def async_browsing(today, query, category, cutoff_date: date, months: int)
                     window_inner_height = await page.evaluate('window.innerHeight')
                     random_scroll = randint(1, window_inner_height)
                     random_wait = randint(500, 2000)
+                    num_scrolls += 1
                     await mouse.wheel(0, scroll_dir*random_scroll)
                     await page.wait_for_timeout(random_wait)
                     scroll_y = await page.evaluate('window.scrollY')
