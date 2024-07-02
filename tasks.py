@@ -23,7 +23,7 @@ from bs4 import BeautifulSoup
 from random import uniform, randint
 
 import asyncio
-from aiofiles import open as aio_open
+#from aiofiles import open as aio_open
 from playwright.async_api import async_playwright, Page
 
 @task
@@ -71,7 +71,7 @@ async def async_browsing(today, query, category, cutoff_date: date, months: int)
         try:
             browser = await p.firefox.launch(headless=True)
         except:
-            os.system("playwright install")
+            os.system("playwright install firefox")
             browser = await p.firefox.launch(headless=True)
         try:
             ### BEGIN PAGE LOAD, SEARCH AND SORTING ###
@@ -394,7 +394,7 @@ async def response_handler(*args, **kw):
             logger.info(f"Image {basename}.{ext} fetched successfully.")
             img_name = f"output/{groups[0]}.{groups[1]}"
             # use aiofiles instead
-            async with aio_open(img_name, 'wb') as f:
-                await f.write(await response.body())
+            #async with aio_open(img_name, 'wb') as f:
+            #    await f.write(await response.body())
     except Exception:
         pass
