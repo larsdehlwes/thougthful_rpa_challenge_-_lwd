@@ -11,6 +11,7 @@ except ImportError:
     import logging
     logger = logging.getLogger()
 
+from robocorp import browser
 from robocorp import workitems
 from robocorp.tasks import task
 from RPA.Excel.Files import Files as Excel
@@ -58,6 +59,8 @@ def thoughtful_automation_challenge():
 
     logger.info("Input processing finished!")
     ### END INPUT PROCESSING ###
+    
+    browser.install("firefox")
 
     output_payload = asyncio.run(async_browsing(today, query, category, cutoff_date, months))
     workitems.outputs.create(payload=output_payload)

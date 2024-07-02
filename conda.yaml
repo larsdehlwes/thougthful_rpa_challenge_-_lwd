@@ -11,5 +11,3 @@ dependencies:
     - robocorp-browser==2.3.3     # https://pypi.org/project/robocorp-browser
     - requests==2.31.0            # https://pypi.org/project/requests
     - aiofiles==24.1.0
-rccPostInstall:
-  - playwright install
