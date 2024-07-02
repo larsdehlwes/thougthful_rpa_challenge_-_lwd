@@ -115,8 +115,6 @@ async def async_browsing(today, query, category, cutoff_date: date, months: int)
         
                 # Parse the search results using BeautifulSoup
                 await page.wait_for_load_state()
-                height_to_be_scrolled = await page.evaluate('document.body.scrollHeight')
-                window_inner_height = await page.evaluate('window.innerHeight')
                 mouse = page.mouse
     
                 scroll_dir = 1
@@ -127,6 +125,8 @@ async def async_browsing(today, query, category, cutoff_date: date, months: int)
                     if imgs_basenames == imgs_basenames_done:
                         break
                     logger.info("Randomly wait and scroll...")
+                    height_to_be_scrolled = await page.evaluate('document.body.scrollHeight')
+                    window_inner_height = await page.evaluate('window.innerHeight')
                     random_scroll = randint(1, window_inner_height)
                     random_wait = randint(500, 2000)
                     await mouse.wheel(0, scroll_dir*random_scroll)
