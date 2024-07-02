@@ -1,5 +1,5 @@
 tasks:
-  Thoughtful Automation Challenge:
+  Async Reuters Scraper:
     shell: python -m robocorp.tasks run tasks.py
 
 environmentConfigs:
