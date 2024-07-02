@@ -132,8 +132,10 @@ async def async_browsing(today, query, category, cutoff_date: date, months: int)
                     await mouse.wheel(0, scroll_dir*random_scroll)
                     await page.wait_for_timeout(random_wait)
                     scroll_y = await page.evaluate('window.scrollY')
-                    if scroll_y + window_inner_height >= height_to_be_scrolled or scroll_y <= 0:
-                        scroll_dir *= -1
+                    if scroll_y + window_inner_height >= height_to_be_scrolled:
+                        scroll_dir = -1
+                    elif scroll_y <= 0:
+                        scroll_dir = 1
 
                 if limit_reached:
                     logger.info("Reached last relevant page.")
