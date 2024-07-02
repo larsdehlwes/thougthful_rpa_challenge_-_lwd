@@ -393,8 +393,10 @@ async def response_handler(*args, **kw):
             logger.debug("groups:%s", groups)
             logger.info(f"Image {basename}.{ext} fetched successfully.")
             img_name = f"output/{groups[0]}.{groups[1]}"
-            # use aiofiles instead
+            # the correc way would be to use aiofiles, however it is not included in the default Robocorp Worker, and it charges us extra time to include it with pip
             #async with aio_open(img_name, 'wb') as f:
             #    await f.write(await response.body())
+            with open(img_name, 'wb') as f:
+                f.write(await response.body)
     except Exception:
         pass
